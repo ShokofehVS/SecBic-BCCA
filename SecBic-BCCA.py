@@ -1,126 +1,97 @@
 import math
-
 import numpy as np
 from Pyfhel import Pyfhel
 
 
-def ckks_corr(v, w):
-    """init of the CKKs scheme"""
+def pearson_corr_ckks(x, y):
+    """init of the ckks scheme as described in the pyfhel documentation"""
+
     HE = Pyfhel()  # Creating empty Pyfhel object
     ckks_params = {
-        'scheme': 'CKKS',  # can also be 'ckks'
-        'n': 2 ** 14,  # Polynomial modulus degree. For CKKS, n/2 values can be
-        #  encoded in a single ciphertext.
-        #  Typ. 2^D for D in [10, 15]
-        'scale': 2 ** 30,  # All the encodings will use it for float->fixed point
-        #  conversion: x_fix = round(x_float * scale)
-        #  You can use this as default scale or use a different
-        #  scale on each operation (set in HE.encryptFrac)
-        'qi_sizes': [60, 30, 30, 30, 60]  # Number of bits of each prime in the chain.
-        # Intermediate values should be  close to log2(scale)
-        # for each operation, to have small rounding errors.
+        'scheme': 'CKKS',  # setting scheme to CKKS
+        'n': 2 ** 14,  # set Polynomial modulus degree
+        'scale': 2 ** 30,  # use default scale
+        'qi_sizes': [60, 30, 30, 30, 60]
     }
+
     HE.contextGen(**ckks_params)  # Generate context for ckks scheme
     HE.keyGen()  # Key Generation: generates a pair of public/secret keys
     HE.rotateKeyGen()
 
-    """encode and encrypt v and w"""
-    arr_v = np.array(v, dtype=np.float64)
-    arr_w = np.array(w, dtype=np.float64)
+    """encoding and encryption of x and y"""
 
-    num_values_v = len(arr_v)
-    num_values_w = len(arr_w)
+    # save x and y as np with float numbers
+    arr_x = np.array(x, dtype=np.float64)
+    arr_y = np.array(y, dtype=np.float64)
 
-    ctxt_v = np.array([HE.encrypt(arr_v[i]) for i in range(num_values_v)])
-    ctxt_w = np.array([HE.encrypt(arr_w[i]) for i in range(num_values_w)])
+    # save length of arrays
+    num_values_x = len(arr_x)
+    num_values_y = len(arr_y)
 
-    # ctxt_v = [[ 0.1  0.1  0.1 ...  0.1  0.1  0.1]
-    #  [ 0.2  0.2  0.2 ...  0.2  0.2  0.2]
-    #  [-0.3 -0.3 -0.3 ... -0.3 -0.3 -0.3]]
+    # each entry of x and y is encrypted separately into a Pyfhel object
+    ctxt_x = np.array([HE.encrypt(arr_x[i]) for i in range(num_values_x)])
+    ctxt_y = np.array([HE.encrypt(arr_y[i]) for i in range(num_values_y)])
 
-    """Calculates the Pearson correlation and returns its absolute value."""
-    # vc = v - np.mean(v)
+    """Calculates the Pearson correlation"""
 
-    mean_ctxt_v = sum(ctxt_v) / num_values_v
+    """1. x_cov"""
 
-    # mean_ctxt_v = [-0.  0.  0. ...  0. -0. -0.]
+    ctxt_mean_x = sum(ctxt_x) / num_values_x
+    ctxt_x_cov = ctxt_x - ctxt_mean_x
 
-    ctext_vc = ctxt_v - mean_ctxt_v
+    """2. y_cov"""
 
-    # ctect_vc = [[ 0.1  0.1  0.1 ...  0.1  0.1  0.1][ 0.2  0.2  0.2 ...  0.2  0.2  0.2]
-    # [-0.3 -0.3 -0.3 ... -0.3 -0.3 -0.3]]
+    ctxt_mean_y = sum(ctxt_y) / num_values_y
+    ctxt_y_cov = ctxt_y - ctxt_mean_y
 
-    # wc = w - np.mean(w)
-    mean_ctxt_w = sum(ctxt_w) / num_values_w
+    """3. xy_cov"""
 
-    # mean_ctxt_w = [1.83 1.83 1.83 ... 1.83 1.83 1.83]
+    ctxt_xy_cov = ctxt_x_cov * ctxt_y_cov
 
-    ctext_wc = ctxt_w - mean_ctxt_w
+    # relinearizate and rescale after ciphertext-ciphertext multiplication to reduce size and scale
+    HE.relinKeyGen()
+    ctxt_xy_cov = ~ctxt_xy_cov
+    np.array([HE.rescale_to_next(ctxt_xy_cov[i]) for i in range(num_values_y)])
 
-    # ctext_wc = [[-3.33 -3.33 -3.33 ... -3.33 -3.33 -3.33][ 0.47  0.47  0.47 ...  0.47  0.47  0.47]
-    # [ 2.87  2.87  2.87 ...  2.87  2.87  2.87]]
+    ctxt_xy_cov_sum = sum(ctxt_xy_cov)
 
-    # data = np.array(np.round([HE.decrypt(ctext_wc[i]) for i in range(num_values_v)], decimals=2))
+    """4/5. x_sdiv and y_sdiv"""
+    ctxt_x_sdiv = ctxt_x_cov ** 2
+    ctxt_y_sdiv = ctxt_y_cov ** 2
 
-    # x = np.sum(vc * wc)
-    mul_ctxt_wv = ctext_vc * ctext_wc
+    # relinearization of results to reduce size
+    HE.relinKeyGen()
+    ctxt_x_sdiv = ~ctxt_x_sdiv
 
-    # mul_ctxt_wv = [[-0.33 -0.33 -0.33 ... -0.33 -0.33 -0.33][ 0.09  0.09  0.09 ...  0.09  0.09  0.09]
-    # [-0.86 -0.86 -0.86 ... -0.86 -0.86 -0.86]]
+    HE.relinKeyGen()
+    ctxt_y_sdiv = ~ctxt_y_sdiv
 
-    np.array([HE.rescale_to_next(mul_ctxt_wv[i]) for i in range(num_values_w)])
+    # rescaling of results to reduce scale
+    np.array([HE.rescale_to_next(ctxt_x_sdiv[i]) for i in range(num_values_y)])
+    np.array([HE.rescale_to_next(ctxt_y_sdiv[i]) for i in range(num_values_y)])
 
-    ctxt_x = sum(mul_ctxt_wv)
+    """6. xy_sdiv"""
+    ctxt_xy_sdiv = sum(ctxt_x_sdiv) * sum(ctxt_y_sdiv)
 
-    # ctxt_x = [-1.1 -1.1 -1.1 ... -1.1 -1.1 -1.1]
+    # relinearizate and rescale after ciphertext-ciphertext multiplication to reduce size and scale
+    HE.relinKeyGen()
+    ctxt_xy_sdiv = ~ctxt_xy_sdiv
+    HE.rescale_to_next(ctxt_xy_sdiv)
 
+    """7. sq_root"""
 
+    # decrypt value
+    ptxt_xy_sdiv = np.mean(HE.decrypt(ctxt_xy_sdiv))
 
-    # y = np.sum(vc * vc) * np.sum(wc * wc)
-    sq_ctxt_vc = ctext_vc ** 2
-    sq_ctxt_wc = ctext_wc ** 2
+    # calculate square root on plaintext value
+    ptxt_sq_root = math.sqrt(ptxt_xy_sdiv)
 
-    # sq_ctxt_vc = [[0.01 0.01 0.01 ... 0.01 0.01 0.01][0.04 0.04 0.04 ... 0.04 0.04 0.04][0.09 0.09 0.09 ... 0.09 0.09 0.09]]
-    # sq_ctxt_wc = [[11.11 11.11 11.11 ... 11.11 11.11 11.11][ 0.22  0.22  0.22 ...  0.22  0.22  0.22][ 8.22  8.22  8.22 ...  8.22  8.22  8.22]]
+    """8. r_xy"""
 
+    # calculate results as ciphertext-plaintext division
+    result_ctxt = ctxt_xy_cov_sum / ptxt_sq_root
 
-    np.array([HE.rescale_to_next(sq_ctxt_vc[i]) for i in range(num_values_w)])
-    np.array([HE.rescale_to_next(sq_ctxt_wc[i]) for i in range(num_values_w)])
-
-    ctxt_y = sum(sq_ctxt_vc) * sum(sq_ctxt_wc)
-    # ctxt_y = [2.77 2.74 2.74 ... 2.73 2.73 2.74] or [2.74 2.74 2.74 ... 2.61 2.74 2.75] or ...
-
-    print(np.round(HE.decrypt(ctxt_y), decimals=2))
-
-    HE.rescale_to_next(ctxt_y)
-
-    # [-9.03  2.72  9.19 ...  2.84 56.98  4.09] !!!!!!!!!!! rescaling is not working ? is the size to big ?
-
-    print(np.round(HE.decrypt(ctxt_y), decimals=2))
-
-
-    # return np.abs(x / np.sqrt(y))
-    # root_txt_y = ctxt_y ** 0.5
-    root_txt_y = ctxt_y
-
-    result_ctxt = ctxt_x - root_txt_y
-
-    print(np.round(HE.decrypt(ctxt_x), decimals=2))
-    print(np.round(HE.decrypt(root_txt_y), decimals=2))
-
-
-    # TODO abs
-
-    """Decrypt & Decode results"""
-
-    result = np.round(HE.decrypt(result_ctxt), decimals=2)
-    print(result)
+    # decrypt & decode results
+    result = np.round(np.mean(HE.decrypt(result_ctxt)), decimals=4)
 
     return result
-
-
-h = np.array([0.1, 0.2, -0.3])
-print(np.round(np.sum(h), decimals=3))
-z = arr_y = np.array([-1.5, 2.3, 4.7])
-
-print(ckks_corr(h, z))
