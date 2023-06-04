@@ -110,21 +110,21 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         ctxt_xy_cov_sum = HE.cumul_add(ctxt_xy_cov, in_new_ctxt=True)
 
         # Compute the squared differences of ctxt_x_cov
-        ctxt_x_sdiv = HE.square(ctxt_x_cov)
+        ctxt_x_sdiv = ctxt_x_cov ** 2
 
         # Compute the squared differences of ctxt_y_cov
-        ctxt_y_sdiv = HE.square(ctxt_y_cov)
+        ctxt_y_sdiv = ctxt_y_cov ** 2
 
         # Compute the product of the sum of ctxt_x_sdiv and ctxt_y_sdiv
-        ctxt_xy_sdiv = np.sum(ctxt_x_sdiv) * np.sum(ctxt_y_sdiv)
+        ctxt_xy_sdiv = HE.cumul_add(ctxt_x_sdiv, in_new_ctxt=True) * HE.cumul_add(ctxt_y_sdiv, in_new_ctxt=True)
 
         # Compute the square root of ctxt_xy_sdiv
-        sq_root = np.sqrt(HE.decrypt(ctxt_xy_sdiv))
+        sq_root = np.sqrt(HE.decrypt(ctxt_xy_sdiv)[0])
         print(sq_root)
         # Compute the final result by dividing ctxt_xy_cov_sum by ctxt_sq_root
-        result = ctxt_xy_cov_sum / sq_root[0]
+        c_result = ctxt_xy_cov_sum / sq_root
 
-        return result
+        return c_result
 
     def sum_with_error(slef, vector, n):
         """ This function sums up a pyfhel objects that contains error values.
