@@ -80,6 +80,9 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
                 if not self._exists(biclusters, b):
                     biclusters.append(b)
+            
+
+        print(biclusters)
 
         return Biclustering(biclusters)
 
@@ -124,10 +127,9 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
     def _corr(self, v, w):
         """Calculates the Pearson correlation and returns its absolute value."""
-        print("mean normal: ", np.mean(v))
         vc = v - np.mean(v)
         wc = w - np.mean(w)
-
+        # wc = wc[:, np.newaxis]
         x = np.sum(vc * wc)
         y = np.sum(vc * vc) * np.sum(wc * wc)
 

@@ -118,8 +118,8 @@ def pearson_corr_ckks(x, y):
     return np.abs(result)
 
 
-x=[30,40,6,4,3,20,100,1000,100,10]
-y=[10,50,60,60,20,1,100,1000,100,10]
+x=[30,40,6,4,3,20,100,1000]
+y=[10,50,60,60,20,1,100,100]
 
 
 print("pearson encrypted:",pearson_corr_ckks(x, y))

@@ -20,7 +20,7 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
         Parameters
         ----------
-        data : numpy.ndarray
+        
         """
 
         # Creating empty Pyfhel object
@@ -42,31 +42,32 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         self.num_rows, self.num_cols = data.shape  # Moved inside the run method
         print(data.shape)
 
-        c_data = np.array([HE.encrypt(data[:, i]) for i in range(self.num_cols)])
+        c_data = np.array([HE.encrypt(data[i, :]) for i in range(self.num_rows)])
         biclusters = []
-        #print(c_data)
+        print(c_data.shape)
 
         #########
 
         for i, j in combinations(range(self.num_rows), 2):
             cols, corr = self._encrypted_find_cols(HE, c_data[i], c_data[j])
 
-            print("cols : ",cols)
-            print("corr :", corr)
-            # if len(cols) >= self.min_cols and corr >= self.correlation_threshold:
-            #     rows = [i, j]
+            if len(cols) >= self.min_cols and corr >= self.correlation_threshold:
+                rows = [i, j]
 
-            #     for k, r in enumerate(data):
-            #         if k != i and k != j and self._accept(data, rows, cols, r):
-            #             rows.append(k)
+                for k, r in enumerate(data):
+                    if k != i and k != j and self._accept(HE, c_data, rows, cols, r):
+                        rows.append(k)
 
-            #     b = Bicluster(rows, cols)
+                b = Bicluster(rows, cols)
 
-            #     if not self._exists(biclusters, b):
-            #         biclusters.append(b)
+                if not self._exists(biclusters, b):
+                    biclusters.append(b)
+                    print(b)
 
         #########
         
+        print(biclusters)
+
         return Biclustering(biclusters)
     
     def _encrypted_find_cols(self,HE, ri, rj):
@@ -76,12 +77,46 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         cols = np.arange(len(ri), dtype=int)
         corr = self.pearson_corr_ckks(HE, ri, rj)
 
-        # while corr < self.correlation_threshold and len(cols) >= self.min_cols:
-        #     imax = self._find_max_decrease(ri, rj, cols)
-        #     cols = np.delete(cols, imax)
-        #     corr = self._corr(ri[cols], rj[cols])
+        while corr < self.correlation_threshold and len(cols) >= self.min_cols:
+            imax = self._find_max_decrease(ri, rj, cols)
+            cols = np.delete(cols, imax)
+            corr = self.pearson_corr_ckks(HE, ri[cols], rj[cols])
 
         return cols, corr
+    
+    def _find_max_decrease(self, ri, rj, indices):
+        """Finds the column which deletion causes the maximum increase in
+        the correlation value between ri and rj
+        """
+        kmax, greater = -1, float('-inf')
+
+        for k in range(len(indices)):
+            ind = np.concatenate((indices[:k], indices[k+1:]))
+            result = self._corr(ri[ind], rj[ind])
+
+            if result > greater:
+                kmax, greater = k, result
+
+        return kmax
+    
+    def _accept(self, HE, data, rows, cols, r):
+        """Checks if row r satisfies the correlation threshold."""
+        for i in rows:
+            corr = self.pearson_corr_ckks(HE, r, data[i, cols])
+
+            if corr < self.correlation_threshold:
+                return False
+
+        return True
+    
+    def _exists(self, biclusters, bic):
+        """Checks if a bicluster has already been found."""
+        for b in biclusters:
+            if len(b.rows) == len(bic.rows) and len(b.cols) == len(bic.cols) and \
+                 np.all(b.rows == bic.rows) and np.all(b.cols == bic.cols):
+                return True
+        return False
+
     
     def _pearson_corr_ckks(self, HE, ctxt_x, ctxt_y):
         # Compute the number of values in the input ciphertext arrays
@@ -140,7 +175,7 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
             result_vector = result_vector + vector_shift
 
         return result_vector
-
+    
     def pearson_corr_ckks(self, HE, ctxt_x, ctxt_y):
 
         """Calculates the Pearson correlation"""
