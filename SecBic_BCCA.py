@@ -42,49 +42,62 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         self.num_rows, self.num_cols = data.shape  # Moved inside the run method
         print(data.shape)
 
-        c_data = np.array([HE.encrypt(data[i, :]) for i in range(self.num_rows)])
+        # c_data = np.empty((self.num_rows, self.num_cols), dtype=object)
+        # for i, row in enumerate(data):
+        #     encrypted_row = [HE.encrypt(element) for element in row]
+        #     c_data[i] = encrypted_row
+
+        # # Encrypt the matrix
+        # c_data = np.empty((self.num_rows, self.num_cols), dtype=object)
+        # for i in range(data.shape[0]):
+        #     for j in range(data.shape[1]):
+        #         c_data[i, j] = HE.encrypt(data[i, j])
+        # c_data = np.array(c_data, dtype=object)
+        c_data = np.array([HE.encrypt(data[i]) for i in range(self.num_rows)])        
         biclusters = []
         print(c_data.shape)
 
         #########
 
         for i, j in combinations(range(self.num_rows), 2):
-            cols, corr = self._encrypted_find_cols(HE, c_data[i], c_data[j])
+            cols, corr = self._encrypted_find_cols(HE, c_data[i], i, c_data[j], j, self.num_cols)
+            print(corr)
 
             if len(cols) >= self.min_cols and corr >= self.correlation_threshold:
                 rows = [i, j]
 
-                for k, r in enumerate(data):
-                    if k != i and k != j and self._accept(HE, c_data, rows, cols, r):
+                for k, r in enumerate(c_data):
+                    if k != i and k != j and self._accept(HE, rows, cols, r):
                         rows.append(k)
 
                 b = Bicluster(rows, cols)
 
                 if not self._exists(biclusters, b):
                     biclusters.append(b)
-                    print(b)
 
         #########
         
-        print(biclusters)
+        for b in biclusters:
+            print(b)
 
         return Biclustering(biclusters)
     
-    def _encrypted_find_cols(self,HE, ri, rj):
+    def _encrypted_find_cols(self,HE, ri, row_i, rj, row_j, l_cols):
         """Finds the column subset for which the correlation between ri and rj
         stands above the correlation threshold.
         """
-        cols = np.arange(len(ri), dtype=int)
+        cols = np.arange(l_cols, dtype=int)
         corr = self.pearson_corr_ckks(HE, ri, rj)
 
         while corr < self.correlation_threshold and len(cols) >= self.min_cols:
-            imax = self._find_max_decrease(ri, rj, cols)
+            imax = self._find_max_decrease(HE, ri, row_i, rj, row_j, cols)
             cols = np.delete(cols, imax)
-            corr = self.pearson_corr_ckks(HE, ri[cols], rj[cols])
-
+            n_ri = HE.encrypt(self.data[row_i][cols])
+            n_rj = HE.encrypt(self.data[row_j][cols])
+            corr = self.pearson_corr_ckks(HE, n_ri, n_rj)
         return cols, corr
     
-    def _find_max_decrease(self, ri, rj, indices):
+    def _find_max_decrease(self,HE, ri, row_i, rj, row_j, indices):
         """Finds the column which deletion causes the maximum increase in
         the correlation value between ri and rj
         """
@@ -92,17 +105,19 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
         for k in range(len(indices)):
             ind = np.concatenate((indices[:k], indices[k+1:]))
-            result = self._corr(ri[ind], rj[ind])
+            n_ri = HE.encrypt(self.data[row_i][ind])
+            n_rj = HE.encrypt(self.data[row_j][ind])
+            result = self.pearson_corr_ckks(HE, n_ri, n_rj)
 
             if result > greater:
                 kmax, greater = k, result
 
         return kmax
     
-    def _accept(self, HE, data, rows, cols, r):
+    def _accept(self, HE, rows, cols, r):
         """Checks if row r satisfies the correlation threshold."""
         for i in rows:
-            corr = self.pearson_corr_ckks(HE, r, data[i, cols])
+            corr = self.pearson_corr_ckks(HE, r, HE.encrypt(self.data[i, cols]))
 
             if corr < self.correlation_threshold:
                 return False
@@ -122,6 +137,8 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         # Compute the number of values in the input ciphertext arrays
         num_values_x = len(ctxt_x)
         num_values_y = len(ctxt_y)
+        print("len of x: ", num_values_x)
+        print("len of y: ", num_values_y)
 
         # Check if input arrays are empty
         if num_values_x == 0 or num_values_y == 0:
@@ -179,15 +196,26 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
     def pearson_corr_ckks(self, HE, ctxt_x, ctxt_y):
 
         """Calculates the Pearson correlation"""
-
+        
         """1. x_cov"""
-
         ctxt_mean_x = HE.cumul_add(ctxt_x, in_new_ctxt=True) / self.num_cols
+        # ctxt_sum_x = HE.encrypt(0)  # Initialize a ciphertext for the sum
+
+        # for ctxt_elem_x in ctxt_x:
+        #     ctxt_sum_x += ctxt_elem_x  # Add each element to the sum ciphertext
+
+        # ctxt_mean_x = ctxt_sum_x / self.num_cols
         ctxt_x_cov = ctxt_x - ctxt_mean_x
 
         """2. y_cov"""
 
         ctxt_mean_y = HE.cumul_add(ctxt_y, in_new_ctxt=True) / self.num_cols
+        # ctxt_sum_y = HE.encrypt(0)  # Initialize a ciphertext for the sum
+
+        # for ctxt_elem_y in ctxt_y:
+        #     ctxt_sum_y += ctxt_elem_y  # Add each element to the sum ciphertext
+
+        # ctxt_mean_y = ctxt_sum_y / self.num_cols
         ctxt_y_cov = ctxt_y - ctxt_mean_y
 
         """3. xy_cov"""
@@ -242,7 +270,7 @@ class SecuredBiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         result_ctxt = ctxt_xy_cov_sum / ptxt_sq_root
 
         # decrypt & decode results
-        result = np.round(HE.decrypt(result_ctxt)[0], decimals=4)
+        result = np.round(HE.decrypt(result_ctxt)[0], decimals=6)
 
         return np.abs(result)
 
