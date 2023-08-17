@@ -40,7 +40,7 @@ class Bicluster:
         if isinstance(rows, np.ndarray) and rows.dtype == np.bool and cols.dtype == np.bool:
             self.rows = np.nonzero(rows)[0]
             self.cols = np.nonzero(cols)[0]
-        elif isinstance(cols, np.ndarray) and rows.dtype == np.int and cols.dtype == np.int:
+        elif isinstance(cols, np.ndarray) and np.issubdtype(np.array(rows).dtype, np.integer) and np.issubdtype(np.array(cols).dtype, np.integer):
             self.rows = rows
             self.cols = cols
         else:

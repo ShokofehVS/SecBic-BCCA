@@ -66,6 +66,7 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
         for i, j in combinations(range(num_rows), 2):
             cols, corr = self._find_cols(data[i], data[j])
+            print(corr)
 
             if len(cols) >= self.min_cols and corr >= self.correlation_threshold:
                 rows = [i, j]
@@ -75,9 +76,14 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
                         rows.append(k)
 
                 b = Bicluster(rows, cols)
+                
 
                 if not self._exists(biclusters, b):
                     biclusters.append(b)
+            
+
+        for b in biclusters:
+            print(b)
 
         return Biclustering(biclusters)
 
@@ -85,7 +91,7 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
         """Finds the column subset for which the correlation between ri and rj
         stands above the correlation threshold.
         """
-        cols = np.arange(len(ri), dtype=np.int)
+        cols = np.arange(len(ri), dtype=int) 
         corr = self._corr(ri, rj)
 
         while corr < self.correlation_threshold and len(cols) >= self.min_cols:
@@ -122,9 +128,16 @@ class BiCorrelationClusteringAlgorithm(BaseBiclusteringAlgorithm):
 
     def _corr(self, v, w):
         """Calculates the Pearson correlation and returns its absolute value."""
+
+        if len(v) != len(w):
+        # Pad the smaller array with zeros to match the shape of the larger array
+            if len(v) < len(w):
+                v = np.array(np.pad(v, (0, len(w) - len(v)), mode='constant'))
+            else:
+                w = np.array(np.pad(w, (0, len(v) - len(w)), mode='constant'))
+
         vc = v - np.mean(v)
         wc = w - np.mean(w)
-
         x = np.sum(vc * wc)
         y = np.sum(vc * vc) * np.sum(wc * wc)
 
