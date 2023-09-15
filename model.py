@@ -37,7 +37,7 @@ class Bicluster:
     """
 
     def __init__(self, rows, cols, data=None):
-        if isinstance(rows, np.ndarray) and rows.dtype == np.bool and cols.dtype == np.bool:
+        if isinstance(rows, np.ndarray) and rows.dtype == bool and cols.dtype == bool:
             self.rows = np.nonzero(rows)[0]
             self.cols = np.nonzero(cols)[0]
         elif isinstance(cols, np.ndarray) and np.issubdtype(np.array(rows).dtype, np.integer) and np.issubdtype(np.array(cols).dtype, np.integer):
